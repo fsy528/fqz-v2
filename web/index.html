@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 驱动的个人任务规划与番茄钟系统 v2.0</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0b1220;
+    --bg2: #111c33;
+    --card: #16233d;
+    --card2: #1c2c4a;
+    --line: #24395f;
+    --text: #e8eefc;
+    --muted: #8fa3c8;
+    --green: #10b981;
+    --cyan: #22d3ee;
+    --yellow: #f59e0b;
+    --red: #ef4444;
+    --purple: #8b5cf6;
+  }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", system-ui, sans-serif;
+    background: radial-gradient(1200px 600px at 20% -10%, #1b2b4d 0%, var(--bg) 55%), var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 22px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  /* 顶部标题 */
+  header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 46px; height: 46px; border-radius: 13px;
+    background: linear-gradient(135deg, var(--green), var(--cyan));
+    display: grid; place-items: center; font-size: 24px;
+    box-shadow: 0 6px 18px rgba(16,185,129,.35);
+  }
+  h1 { font-size: 21px; font-weight: 700; letter-spacing: .5px; }
+  .sub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+  .clock-badge {
+    font-size: 13px; color: var(--muted); background: var(--card);
+    border: 1px solid var(--line); padding: 7px 13px; border-radius: 999px;
+  }
+
+  /* 标签导航 */
+  nav { display: flex; gap: 8px; background: var(--card); border: 1px solid var(--line); padding: 6px; border-radius: 14px; margin-bottom: 20px; width: fit-content; }
+  nav button {
+    border: 0; background: transparent; color: var(--muted); font-family: inherit;
+    font-size: 14px; padding: 9px 20px; border-radius: 10px; cursor: pointer; transition: .18s;
+  }
+  nav button:hover { color: var(--text); background: rgba(255,255,255,.04); }
+  nav button.on { background: linear-gradient(135deg, var(--green), var(--cyan)); color: #04231a; font-weight: 700; }
+
+  .page { display: none; }
+  .page.on { display: block; }
+  .grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 18px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: linear-gradient(180deg, var(--card), var(--bg2));
+    border: 1px solid var(--line); border-radius: 18px; padding: 20px;
+  }
+  .card h2 { font-size: 15px; font-weight: 700; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+
+  /* 计时圆环 */
+  .timer-box { display: flex; flex-direction: column; align-items: center; }
+  .ring-wrap { position: relative; width: 290px; height: 290px; margin: 6px 0 14px; }
+  .ring-wrap svg { transform: rotate(-90deg); }
+  .ring-bg { fill: none; stroke: #22325a; stroke-width: 14; }
+  .ring-fg { fill: none; stroke: url(#grad); stroke-width: 14; stroke-linecap: round; transition: stroke-dashoffset .9s linear; }
+  .ring-inner { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .time-text { font-size: 54px; font-weight: 800; letter-spacing: 2px; font-variant-numeric: tabular-nums; }
+  .state-text { font-size: 13.5px; color: var(--muted); margin-top: 6px; }
+  .task-now { font-size: 13.5px; margin-top: 10px; color: var(--cyan); max-width: 240px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .btn {
+    border: 0; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+    padding: 11px 22px; border-radius: 11px; transition: .18s; color: #eaf2ff;
+    background: var(--card2); border: 1px solid var(--line);
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn.primary { background: linear-gradient(135deg, var(--green), var(--cyan)); color: #04231a; border: 0; box-shadow: 0 6px 16px rgba(16,185,129,.3); }
+  .btn.warn { background: linear-gradient(135deg, #f59e0b, #f97316); color: #2a1600; border: 0; }
+  .btn.danger { background: #3b1d24; border-color: #7f2d3a; color: #ffb4bf; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+  /* 状态提示条 */
+  .hint { margin-top: 14px; font-size: 13px; padding: 11px 14px; border-radius: 11px; border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--muted); width: 100%; text-align: center; }
+  .hint.good { border-color: rgba(16,185,129,.5); background: rgba(16,185,129,.12); color: #7ef0c0; }
+  .hint.mid { border-color: rgba(34,211,238,.5); background: rgba(34,211,238,.12); color: #9fe9f8; }
+  .hint.bad { border-color: rgba(239,68,68,.5); background: rgba(239,68,68,.12); color: #ffb0b0; }
+
+  /* 设置行 */
+  .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 0; border-bottom: 1px dashed var(--line); font-size: 13.5px; }
+  .setting-row:last-child { border-bottom: 0; }
+  .setting-row input[type=number] {
+    width: 86px; background: var(--bg2); border: 1px solid var(--line); color: var(--text);
+    padding: 8px 10px; border-radius: 9px; font-family: inherit; font-size: 13.5px; text-align: center;
+  }
+  .tag { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: rgba(139,92,246,.16); color: #c4b5fd; border: 1px solid rgba(139,92,246,.4); }
+
+  /* 任务 */
+  .add-row { display: flex; gap: 10px; margin-bottom: 6px; }
+  .add-row input {
+    flex: 1; background: var(--bg2); border: 1px solid var(--line); color: var(--text);
+    padding: 13px 15px; border-radius: 12px; font-family: inherit; font-size: 14px;
+  }
+  .add-row input::placeholder { color: #5c729b; }
+  .add-row input:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(16,185,129,.15); }
+  .ex { font-size: 12.5px; color: var(--muted); margin: 8px 2px 16px; }
+  .ex code { background: rgba(255,255,255,.06); padding: 2px 7px; border-radius: 6px; color: #9fd6ff; }
+
+  .task {
+    display: flex; align-items: center; gap: 13px; padding: 14px;
+    background: rgba(255,255,255,.025); border: 1px solid var(--line);
+    border-radius: 13px; margin-bottom: 10px; transition: .18s;
+  }
+  .task:hover { border-color: #33507f; background: rgba(255,255,255,.05); }
+  .task.done { opacity: .5; }
+  .chk {
+    width: 22px; height: 22px; border-radius: 7px; border: 2px solid #3d5b8f; cursor: pointer;
+    display: grid; place-items: center; flex: 0 0 auto; transition: .18s; color: transparent; font-size: 13px;
+  }
+  .chk:hover { border-color: var(--green); }
+  .task.done .chk { background: var(--green); border-color: var(--green); color: #04231a; }
+  .task-main { flex: 1; min-width: 0; }
+  .task-name { font-size: 14.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task.done .task-name { text-decoration: line-through; }
+  .task-meta { font-size: 12px; color: var(--muted); margin-top: 5px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .pill { padding: 2px 8px; border-radius: 999px; font-size: 11.5px; border: 1px solid; }
+  .p-high { color: #ffb4bf; border-color: #7f2d3a; background: rgba(239,68,68,.12); }
+  .p-mid { color: #ffd9a0; border-color: #7a5a22; background: rgba(245,158,11,.12); }
+  .p-low { color: #a8d8ff; border-color: #2d5580; background: rgba(59,130,246,.12); }
+  .icon-btn { background: transparent; border: 0; color: var(--muted); font-size: 17px; cursor: pointer; padding: 5px 8px; border-radius: 8px; }
+  .icon-btn:hover { color: var(--red); background: rgba(239,68,68,.1); }
+  .empty { text-align: center; color: var(--muted); font-size: 13.5px; padding: 26px 0; }
+
+  /* 统计 */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 14px; margin-bottom: 18px; }
+  .kpi { background: linear-gradient(180deg, var(--card), var(--bg2)); border: 1px solid var(--line); border-radius: 15px; padding: 17px; }
+  .kpi .k-label { font-size: 12.5px; color: var(--muted); margin-bottom: 9px; }
+  .kpi .k-val { font-size: 29px; font-weight: 800; }
+  .kpi .k-val small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 3px; }
+  .c-green { color: var(--green); } .c-cyan { color: var(--cyan); } .c-yellow { color: var(--yellow); } .c-purple { color: var(--purple); }
+
+  .bars { display: flex; align-items: flex-end; gap: 12px; height: 190px; padding: 12px 4px 0; }
+  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 7px; }
+  .bar {
+    width: 100%; max-width: 46px; border-radius: 9px 9px 3px 3px;
+    background: linear-gradient(180deg, var(--green), #0e7f61); min-height: 3px; transition: .3s;
+    position: relative;
+  }
+  .bar-val { font-size: 11.5px; color: var(--muted); }
+  .bar-label { font-size: 11px; color: var(--muted); }
+
+  /* 反馈弹窗 */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(4,10,22,.78); backdrop-filter: blur(5px);
+    display: none; place-items: center; z-index: 99; padding: 20px;
+  }
+  .overlay.on { display: grid; }
+  .modal {
+    width: 100%; max-width: 430px; background: linear-gradient(180deg, #1a2a47, #12203a);
+    border: 1px solid #2e4674; border-radius: 20px; padding: 24px;
+    box-shadow: 0 24px 60px rgba(0,0,0,.6); animation: pop .22s ease;
+  }
+  @keyframes pop { from { transform: scale(.94); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .modal h3 { font-size: 17px; margin-bottom: 6px; }
+  .modal p { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+  .fb-opt {
+    display: flex; align-items: center; gap: 13px; padding: 14px; border-radius: 13px;
+    border: 1px solid var(--line); background: rgba(255,255,255,.03); cursor: pointer;
+    margin-bottom: 10px; transition: .16s; font-family: inherit; color: var(--text); width: 100%; text-align: left;
+  }
+  .fb-opt:hover { transform: translateY(-1px); }
+  .fb-opt .emo { font-size: 22px; }
+  .fb-opt .t { font-size: 14.5px; font-weight: 600; }
+  .fb-opt .d { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .fb-opt.o1:hover { border-color: var(--green); background: rgba(16,185,129,.1); }
+  .fb-opt.o2:hover { border-color: var(--cyan); background: rgba(34,211,238,.1); }
+  .fb-opt.o3:hover { border-color: var(--red); background: rgba(239,68,68,.1); }
+
+  /* 记录列表 */
+  .log { max-height: 210px; overflow-y: auto; }
+  .log-item { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; padding: 9px 0; border-bottom: 1px dashed var(--line); }
+  .log-item:last-child { border-bottom: 0; }
+  .log-item .ln { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .log-item .lv { flex: 0 0 auto; font-weight: 600; }
+  .log::-webkit-scrollbar { width: 7px; }
+  .log::-webkit-scrollbar-thumb { background: #2b4470; border-radius: 99px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <div class="logo">🍅</div>
+      <div>
+        <h1>AI 驱动的个人任务规划与番茄钟系统 <span style="font-size:13px;color:var(--muted);font-weight:500">v2.0</span></h1>
+        <div class="sub">专注状态反馈 · 实时自适应调时 · 个性化推荐时长</div>
+      </div>
+    </div>
+    <div class="clock-badge" id="clock">--:--:--</div>
+  </header>
+
+  <nav>
+    <button id="nav-timer" class="on" onclick="switchPage('timer')">⏱ 专注计时</button>
+    <button id="nav-tasks" onclick="switchPage('tasks')">📋 任务管理</button>
+    <button id="nav-stats" onclick="switchPage('stats')">📊 专注画像</button>
+  </nav>
+
+  <!-- ============ 计时页 ============ -->
+  <section class="page on" id="page-timer">
+    <div class="grid">
+      <div class="card timer-box">
+        <h2><span class="dot"></span>当前专注</h2>
+        <div class="ring-wrap">
+          <svg width="290" height="290">
+            <defs>
+              <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#10b981"/>
+                <stop offset="100%" stop-color="#22d3ee"/>
+              </linearGradient>
+            </defs>
+            <circle class="ring-bg" cx="145" cy="145" r="126"></circle>
+            <circle class="ring-fg" id="ringFg" cx="145" cy="145" r="126"
+              stroke-dasharray="791.7" stroke-dashoffset="0"></circle>
+          </svg>
+          <div class="ring-inner">
+            <div class="time-text" id="timeText">25:00</div>
+            <div class="state-text" id="stateText">待开始</div>
+            <div class="task-now" id="taskNow">未关联任务</div>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" id="btnStart" onclick="startTimer()">▶ 开始专注</button>
+          <button class="btn" id="btnPause" onclick="togglePause()" disabled>⏸ 暂停</button>
+          <button class="btn danger" onclick="resetTimer()">↺ 重置</button>
+        </div>
+        <div class="hint" id="hint">选择任务并开始专注，系统将按设定间隔询问你的专注状态</div>
+      </div>
+
+      <div>
+        <div class="card" style="margin-bottom:18px">
+          <h2><span class="dot" style="background:var(--cyan)"></span>开始新番茄钟</h2>
+          <div class="setting-row">
+            <span>关联任务</span>
+            <select id="taskSelect" style="background:var(--bg2);border:1px solid var(--line);color:var(--text);padding:8px 10px;border-radius:9px;font-family:inherit;font-size:13px;min-width:190px"></select>
+          </div>
+          <div class="setting-row">
+            <span>专注时长（分钟）</span>
+            <input type="number" id="workMin" value="25" min="1" max="120">
+          </div>
+          <div class="setting-row">
+            <span>AI 推荐时长</span>
+            <span><span class="tag" id="recTag">25 分钟</span>
+            <button class="btn" style="padding:6px 12px;font-size:12.5px;margin-left:8px" onclick="useRecommended()">使用</button></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2><span class="dot" style="background:var(--yellow)"></span>AI 自适应设置</h2>
+          <div class="setting-row">
+            <span>专注度反馈间隔（分钟）</span>
+            <input type="number" id="fbInterval" value="5" min="1" max="30">
+          </div>
+          <div class="setting-row" style="border-bottom:0;padding-bottom:0">
+            <span style="color:var(--muted);font-size:12.5px;line-height:1.7">
+              计时中系统会按此间隔主动询问你的专注状态：<br>
+              <b style="color:#7ef0c0">非常专注</b> → 自动延长 5 分钟<br>
+              <b style="color:#9fe9f8">状态一般</b> → 保持节奏<br>
+              <b style="color:#ffb0b0">容易分心</b> → 提前结束进入休息
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 任务页 ============ -->
+  <section class="page" id="page-tasks">
+    <div class="grid">
+      <div class="card">
+        <h2><span class="dot"></span>智能添加任务（自然语言）</h2>
+        <div class="add-row">
+          <input id="smartInput" placeholder="例如：明天完成高数作业，优先级高，预计2个番茄"
+                 onkeydown="if(event.key==='Enter')addSmart()">
+          <button class="btn primary" onclick="addSmart()">＋ 添加</button>
+        </div>
+        <div class="ex">支持识别：优先级（<code>高/重要/紧急</code>、<code>低/不重要</code>）、时长（<code>半小时</code>、<code>1小时</code>、<code>2小时</code>）、截止（<code>今天/明天/后天/本周/下周</code>）</div>
+
+        <h2 style="margin-top:6px"><span class="dot" style="background:var(--purple)"></span>手动添加任务</h2>
+        <div class="add-row">
+          <input id="manualName" placeholder="任务名称" onkeydown="if(event.key==='Enter')addManual()">
+          <select id="manualPrio" style="background:var(--bg2);border:1px solid var(--line);color:var(--text);padding:0 10px;border-radius:12px;font-family:inherit;font-size:13px">
+            <option value="2">高优先级</option>
+            <option value="1" selected>中优先级</option>
+            <option value="0">低优先级</option>
+          </select>
+          <input id="manualEst" type="number" value="25" min="5" max="180" style="width:100px;flex:0 0 auto;background:var(--bg2);border:1px solid var(--line);color:var(--text);padding:13px 12px;border-radius:12px;font-family:inherit;font-size:14px" title="预估分钟">
+          <button class="btn" onclick="addManual()">添加</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="dot" style="background:var(--cyan)"></span>任务列表 <span id="taskCount" style="color:var(--muted);font-weight:500;font-size:13px"></span></h2>
+        <div id="taskList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 统计页 ============ -->
+  <section class="page" id="page-stats">
+    <div class="kpis">
+      <div class="kpi"><div class="k-label">总专注次数</div><div class="k-val c-green" id="kCount">0<small>次</small></div></div>
+      <div class="kpi"><div class="k-label">累计专注时长</div><div class="k-val c-cyan" id="kTotal">0<small>分钟</small></div></div>
+      <div class="kpi"><div class="k-label">综合专注度</div><div class="k-val c-purple" id="kFocus">--</div></div>
+      <div class="kpi"><div class="k-label">提前结束率</div><div class="k-val c-yellow" id="kEarly">0<small>%</small></div></div>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <h2><span class="dot"></span>时间利用分布（各时段专注时长）</h2>
+        <div class="bars" id="bars"></div>
+      </div>
+      <div class="card">
+        <h2><span class="dot" style="background:var(--yellow)"></span>专注会话记录</h2>
+        <div class="log" id="logList"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:18px">
+      <h2><span class="dot" style="background:var(--purple)"></span>个性化推荐时长</h2>
+      <div style="font-size:13.5px;color:var(--muted);line-height:1.9">
+        系统基于你的历史实际专注时长学习，当前推荐专注时长为
+        <b style="color:var(--green);font-size:19px" id="recBig">25</b> 分钟（限制在 15–60 分钟区间）。
+        使用越久，推荐越贴合你的个人专注节奏。
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- 反馈弹窗 -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h3>🎯 专注度反馈</h3>
+    <p>现在感觉怎么样？系统将根据你的状态实时调整本轮时长</p>
+    <button class="fb-opt o1" onclick="submitFeedback(1)">
+      <span class="emo">🟢</span>
+      <span><div class="t">非常专注</div><div class="d">状态很好，本轮自动延长 5 分钟</div></span>
+    </button>
+    <button class="fb-opt o2" onclick="submitFeedback(2)">
+      <span class="emo">🔵</span>
+      <span><div class="t">状态一般</div><div class="d">保持当前节奏继续专注</div></span>
+    </button>
+    <button class="fb-opt o3" onclick="submitFeedback(3)">
+      <span class="emo">🔴</span>
+      <span><div class="t">容易分心</div><div class="d">提前结束本轮，进入休息</div></span>
+    </button>
+  </div>
+</div>
+
+<script>
+/* ========== 数据层（localStorage 持久化） ========== */
+const DB = {
+  tasks: JSON.parse(localStorage.getItem('pomo_tasks') || '[]'),
+  sessions: JSON.parse(localStorage.getItem('pomo_sessions') || '[]'),
+  save() {
+    localStorage.setItem('pomo_tasks', JSON.stringify(this.tasks));
+    localStorage.setItem('pomo_sessions', JSON.stringify(this.sessions));
+  }
+};
+
+const PRIO_NAME = ['低', '中', '高'];
+const PRIO_CLASS = ['p-low', 'p-mid', 'p-high'];
+
+/* ========== 页面切换 ========== */
+function switchPage(p) {
+  ['timer', 'tasks', 'stats'].forEach(k => {
+    document.getElementById('page-' + k).classList.toggle('on', k === p);
+    document.getElementById('nav-' + k).classList.toggle('on', k === p);
+  });
+  if (p === 'stats') renderStats();
+  if (p === 'tasks') renderTasks();
+  if (p === 'timer') renderTaskSelect();
+}
+
+/* ========== 时钟 ========== */
+setInterval(() => {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  document.getElementById('clock').textContent = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}, 1000);
+
+/* ========== 自然语言解析（关键词匹配 + 规则引擎） ========== */
+function parseInput(text) {
+  const t = text.toLowerCase();
+  // 优先级
+  let priority = 1;
+  if (/高|重要|紧急|urgent|important/.test(t)) priority = 2;
+  else if (/低|不重要|不着急|low/.test(t)) priority = 0;
+  // 预计时长
+  let est = 25;
+  if (/半小时|30分钟|30min/.test(t)) est = 30;
+  else if (/1小时|一小时|60分钟|60min/.test(t)) est = 60;
+  else if (/2小时|两小时|120分钟/.test(t)) est = 120;
+  else if (/3小时/.test(t)) est = 180;
+  else if (/4小时/.test(t)) est = 240;
+  // 截止时间
+  const now = Date.now();
+  let deadline = now + 24 * 3600 * 1000;
+  if (/今天|today/.test(t)) deadline = now;
+  else if (/明天|tomorrow/.test(t)) deadline = now + 24 * 3600 * 1000;
+  else if (/后天/.test(t)) deadline = now + 48 * 3600 * 1000;
+  else if (/这周|本周|this week/.test(t)) deadline = now + 7 * 24 * 3600 * 1000;
+  else if (/下周|next week/.test(t)) deadline = now + 14 * 24 * 3600 * 1000;
+
+  let name = text.trim();
+  if (name.length > 46) name = name.slice(0, 46) + '…';
+  return { name, priority, est, deadline };
+}
+
+function fmtDate(ts) {
+  const d = new Date(ts), p = n => String(n).padStart(2, '0');
+  return `${d.getMonth()+1}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/* ========== 任务管理 ========== */
+function addSmart() {
+  const el = document.getElementById('smartInput');
+  const val = el.value.trim();
+  if (!val) { toast('请输入任务描述'); return; }
+  const p = parseInput(val);
+  DB.tasks.push({
+    id: Date.now(), name: p.name, priority: p.priority,
+    est: p.est, deadline: p.deadline, done: false, created: Date.now()
+  });
+  DB.save();
+  el.value = '';
+  renderTasks(); renderTaskSelect();
+  toast(`✅ 已解析添加：${PRIO_NAME[p.priority]}优先级 · 预计 ${p.est} 分钟 · 截止 ${fmtDate(p.deadline)}`, 'good');
+}
+
+function addManual() {
+  const name = document.getElementById('manualName').value.trim();
+  if (!name) { toast('请输入任务名称'); return; }
+  const prio = parseInt(document.getElementById('manualPrio').value);
+  const est = parseInt(document.getElementById('manualEst').value) || 25;
+  DB.tasks.push({
+    id: Date.now(), name, priority: prio, est,
+    deadline: Date.now() + 24 * 3600 * 1000, done: false, created: Date.now()
+  });
+  DB.save();
+  document.getElementById('manualName').value = '';
+  renderTasks(); renderTaskSelect();
+  toast('✅ 任务已添加', 'good');
+}
+
+function toggleTask(id) {
+  const t = DB.tasks.find(x => x.id === id);
+  if (t) { t.done = !t.done; DB.save(); renderTasks(); renderTaskSelect(); }
+}
+function delTask(id) {
+  DB.tasks = DB.tasks.filter(x => x.id !== id);
+  DB.save(); renderTasks(); renderTaskSelect();
+}
+
+function renderTasks() {
+  const box = document.getElementById('taskList');
+  const list = DB.tasks.slice().sort((a, b) => b.created - a.created);
+  document.getElementById('taskCount').textContent = `（共 ${list.length} 个，未完成 ${list.filter(t=>!t.done).length} 个）`;
+  if (!list.length) { box.innerHTML = '<div class="empty">暂无任务，先在上方添加一个吧</div>'; return; }
+  box.innerHTML = list.map(t => `
+    <div class="task ${t.done ? 'done' : ''}">
+      <div class="chk" onclick="toggleTask(${t.id})">✓</div>
+      <div class="task-main">
+        <div class="task-name">${escapeHtml(t.name)}</div>
+        <div class="task-meta">
+          <span class="pill ${PRIO_CLASS[t.priority]}">${PRIO_NAME[t.priority]}优先级</span>
+          <span>预计 ${t.est} 分钟</span>
+          <span>截止 ${fmtDate(t.deadline)}</span>
+          <span>${t.done ? '已完成' : '待办'}</span>
+        </div>
+      </div>
+      <button class="icon-btn" onclick="delTask(${t.id})" title="删除">🗑</button>
+    </div>`).join('');
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function renderTaskSelect() {
+  const sel = document.getElementById('taskSelect');
+  const undone = DB.tasks.filter(t => !t.done);
+  sel.innerHTML = '<option value="0">不关联任务</option>' +
+    undone.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
+}
+
+/* ========== 番茄钟计时 + AI 自适应 ========== */
+const RING_LEN = 791.7;
+let timer = {
+  running: false, paused: false,
+  plannedSec: 25 * 60, remainSec: 25 * 60,
+  endAt: 0, taskName: '', taskId: 0,
+  startWall: 0,
+  // AI 自适应
+  fbIntervalMin: 5, nextFbAt: 0,
+  veryFocused: 0, normal: 0, distracted: 0,
+  earlyEnded: false, extended: 0,
+  tickId: null
+};
+
+function fmtTime(sec) {
+  sec = Math.max(0, Math.round(sec));
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function startTimer() {
+  if (timer.running) { toast('计时器已在运行中'); return; }
+  const mins = Math.max(1, parseInt(document.getElementById('workMin').value) || 25);
+  const fb = Math.max(1, parseInt(document.getElementById('fbInterval').value) || 5);
+  const taskId = parseInt(document.getElementById('taskSelect').value) || 0;
+  const task = DB.tasks.find(t => t.id === taskId);
+
+  timer.running = true; timer.paused = false;
+  timer.plannedSec = mins * 60;
+  timer.remainSec = mins * 60;
+  timer.endAt = Date.now() + mins * 60 * 1000;
+  timer.startWall = Date.now();
+  timer.taskName = task ? task.name : '';
+  timer.taskId = taskId;
+  timer.fbIntervalMin = fb;
+  timer.nextFbAt = Date.now() + fb * 60 * 1000;
+  timer.veryFocused = timer.normal = timer.distracted = 0;
+  timer.earlyEnded = false; timer.extended = 0;
+
+  document.getElementById('btnStart').disabled = true;
+  document.getElementById('btnPause').disabled = false;
+  setHint(`⏳ 专注中 · 每 ${fb} 分钟询问一次专注度`, 'mid');
+  document.getElementById('taskNow').textContent = timer.taskName || '未关联任务';
+  document.getElementById('stateText').textContent = '专注中';
+
+  if (timer.tickId) clearInterval(timer.tickId);
+  timer.tickId = setInterval(tick, 250);
+  tick();
+}
+
+function tick() {
+  if (!timer.running || timer.paused) return;
+  const now = Date.now();
+  timer.remainSec = Math.max(0, (timer.endAt - now) / 1000);
+  updateRing();
+
+  // 到点：触发专注度反馈询问
+  if (now >= timer.nextFbAt && timer.remainSec > 0) {
+    timer.nextFbAt += timer.fbIntervalMin * 60 * 1000;
+    openFeedback();
+    return;
+  }
+  // 时间到
+  if (timer.remainSec <= 0) { finishSession(false); }
+}
+
+function updateRing() {
+  const total = timer.plannedSec || 1;
+  const ratio = Math.min(1, Math.max(0, timer.remainSec / total));
+  const offset = RING_LEN * (1 - ratio);
+  const ring = document.getElementById('ringFg');
+  ring.setAttribute('stroke-dashoffset', offset.toFixed(1));
+  // 颜色随状态变化
+  let c1 = '#10b981', c2 = '#22d3ee';
+  const g = document.querySelector('#grad stop');
+  if (timer.distracted > timer.veryFocused && timer.distracted > 0) { c1 = '#ef4444'; c2 = '#f59e0b'; }
+  else if (timer.normal > timer.veryFocused && timer.normal > 0) { c1 = '#22d3ee'; c2 = '#3b82f6'; }
+  g.setAttribute('stop-color', c1);
+  document.querySelectorAll('#grad stop')[1].setAttribute('stop-color', c2);
+  document.getElementById('timeText').textContent = fmtTime(timer.remainSec);
+}
+
+function togglePause() {
+  if (!timer.running) return;
+  timer.paused = !timer.paused;
+  const btn = document.getElementById('btnPause');
+  if (timer.paused) {
+    btn.textContent = '▶ 继续';
+    document.getElementById('stateText').textContent = '已暂停';
+    setHint('⏸ 已暂停，点击"继续"恢复专注', '');
+  } else {
+    btn.textContent = '⏸ 暂停';
+    // 暂停期间不流逝：重算结束点
+    timer.endAt = Date.now() + timer.remainSec * 1000;
+    timer.nextFbAt = Date.now() + timer.fbIntervalMin * 60 * 1000;
+    document.getElementById('stateText').textContent = '专注中';
+    setHint('⏳ 专注中 · 保持节奏', 'mid');
+  }
+}
+
+function resetTimer() {
+  if (timer.tickId) clearInterval(timer.tickId);
+  timer.running = false; timer.paused = false;
+  const mins = Math.max(1, parseInt(document.getElementById('workMin').value) || 25);
+  timer.plannedSec = mins * 60; timer.remainSec = mins * 60;
+  document.getElementById('btnStart').disabled = false;
+  document.getElementById('btnPause').disabled = true;
+  document.getElementById('btnPause').textContent = '⏸ 暂停';
+  document.getElementById('stateText').textContent = '待开始';
+  document.getElementById('taskNow').textContent = '未关联任务';
+  updateRing();
+  setHint('选择任务并开始专注，系统将按设定间隔询问你的专注状态', '');
+}
+
+function openFeedback() {
+  document.getElementById('overlay').classList.add('on');
+}
+
+function submitFeedback(level) {
+  document.getElementById('overlay').classList.remove('on');
+  if (!timer.running) return;
+  if (level === 1) {
+    timer.veryFocused++;
+    timer.extended++;
+    timer.endAt += 5 * 60 * 1000;       // 延长 5 分钟
+    timer.plannedSec += 5 * 60;
+    setHint('✨ 状态很好！本轮自动延长 5 分钟', 'good');
+  } else if (level === 2) {
+    timer.normal++;
+    setHint('💪 保持节奏，继续专注', 'mid');
+  } else {
+    timer.distracted++;
+    timer.earlyEnded = true;
+    finishSession(true);                 // 提前结束
+    return;
+  }
+  updateRing();
+}
+
+function finishSession(early) {
+  if (timer.tickId) clearInterval(timer.tickId);
+  const actual = Math.max(0, Math.round((Date.now() - timer.startWall) / 60000));
+  const totalFb = timer.veryFocused + timer.normal + timer.distracted;
+  let level = 0;
+  if (totalFb > 0) {
+    if (timer.veryFocused >= timer.normal && timer.veryFocused >= timer.distracted) level = 1;
+    else if (timer.distracted > timer.veryFocused && timer.distracted > timer.normal) level = 3;
+    else level = 2;
+  }
+  DB.sessions.push({
+    start: timer.startWall, end: Date.now(),
+    task: timer.taskName || '无任务',
+    planned: Math.round(timer.plannedSec / 60),
+    actual: actual, level, early: !!early
+  });
+  DB.save();
+
+  timer.running = false; timer.paused = false;
+  document.getElementById('btnStart').disabled = false;
+  document.getElementById('btnPause').disabled = true;
+  document.getElementById('btnPause').textContent = '⏸ 暂停';
+  document.getElementById('stateText').textContent = '已结束';
+  timer.remainSec = 0; updateRing();
+  setHint(early ? '🍃 因分心提前结束本轮，休息一下吧' : '🎉 本轮专注完成！', early ? 'bad' : 'good');
+  renderStats();
+  toast(early ? '本轮已提前结束，记录已保存' : `本轮专注完成，实际专注 ${actual} 分钟`, early ? '' : 'good');
+}
+
+function useRecommended() {
+  document.getElementById('workMin').value = getRecommended();
+  toast('已应用 AI 推荐时长');
+}
+
+/* 个性化推荐：基于历史实际专注时长 */
+function getRecommended() {
+  const acts = DB.sessions.filter(s => s.actual > 0).map(s => s.actual);
+  if (!acts.length) return 25;
+  let avg = Math.round(acts.reduce((a, b) => a + b, 0) / acts.length);
+  return Math.min(60, Math.max(15, avg));
+}
+
+function setHint(text, cls) {
+  const el = document.getElementById('hint');
+  el.textContent = text;
+  el.className = 'hint' + (cls ? ' ' + cls : '');
+}
+
+/* ========== 统计 / 专注画像 ========== */
+function renderStats() {
+  const s = DB.sessions;
+  const count = s.length;
+  const total = s.reduce((a, b) => a + (b.actual || 0), 0);
+  document.getElementById('kCount').innerHTML = count + '<small>次</small>';
+  document.getElementById('kTotal').innerHTML = total + '<small>分钟</small>';
+
+  const very = s.filter(x => x.level === 1).length;
+  const normal = s.filter(x => x.level === 2).length;
+  const dist = s.filter(x => x.level === 3).length;
+  const fbTotal = very + normal + dist;
+  document.getElementById('kFocus').textContent = fbTotal ? Math.round((very * 1 + normal * 0.5) / fbTotal * 100) + '%' : '--';
+  const early = s.filter(x => x.early).length;
+  document.getElementById('kEarly').innerHTML = (count ? Math.round(early / count * 100) : 0) + '<small>%</small>';
+
+  document.getElementById('recBig').textContent = getRecommended();
+  document.getElementById('recTag').textContent = getRecommended() + ' 分钟';
+
+  // 时段柱状图（6 段 × 4 小时）
+  const buckets = [0, 0, 0, 0, 0, 0];
+  s.forEach(x => {
+    const h = new Date(x.start).getHours();
+    buckets[Math.min(5, Math.floor(h / 4))] += (x.actual || 0);
+  });
+  const labels = ['00-04', '04-08', '08-12', '12-16', '16-20', '20-24'];
+  const max = Math.max(1, ...buckets);
+  document.getElementById('bars').innerHTML = buckets.map((v, i) => `
+    <div class="bar-col">
+      <div class="bar-val">${v ? v + '分' : ''}</div>
+      <div class="bar" style="height:${Math.max(3, v / max * 150)}px"></div>
+      <div class="bar-label">${labels[i]}</div>
+    </div>`).join('');
+
+  // 会话记录
+  const logBox = document.getElementById('logList');
+  const logs = s.slice().reverse().slice(0, 20);
+  if (!logs.length) { logBox.innerHTML = '<div class="empty">暂无专注记录，完成一次番茄钟后这里会显示</div>'; return; }
+  const lvName = { 1: '非常专注', 2: '状态一般', 3: '容易分心', 0: '无反馈' };
+  const lvColor = { 1: 'var(--green)', 2: 'var(--cyan)', 3: 'var(--red)', 0: 'var(--muted)' };
+  logBox.innerHTML = logs.map(x => `
+    <div class="log-item">
+      <span class="ln">${fmtDate(x.start)} · ${escapeHtml(x.task)}${x.early ? ' · 提前结束' : ''}</span>
+      <span class="lv" style="color:${lvColor[x.level]}">${x.actual}分 · ${lvName[x.level]}</span>
+    </div>`).join('');
+}
+
+/* ========== 轻提示 ========== */
+let toastTimer = null;
+function toast(msg, cls) {
+  setHint(msg, cls || '');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    if (timer.running) setHint('⏳ 专注中 · 保持节奏', 'mid');
+  }, 4000);
+}
+
+/* ========== 初始化 ========== */
+(function init() {
+  renderTasks(); renderTaskSelect(); renderStats(); resetTimer();
+})();
+</script>
+</body>
+</html>
